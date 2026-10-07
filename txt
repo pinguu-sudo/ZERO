@@ -1,0 +1,1474 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>■ 管理者コントロールパネル ■</title>
+    <link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #F8F9FA;
+            font-family: "DotGothic16", "MS PGothic", monospace;
+            color: #000000;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade {
+            animation: fadeIn 0.2s ease-out forwards;
+        }
+        /* ポリゴンショック（動的スピード対応） */
+        @keyframes polygonShockEffect {
+            0% { background-color: var(--shock-color-1, #ff0000) !important; filter: invert(1); }
+            50% { background-color: var(--shock-color-2, #0000ff) !important; filter: invert(0); }
+            100% { background-color: var(--shock-color-1, #ff0000) !important; filter: invert(1); }
+        }
+        .polygon-shock-active {
+            animation: polygonShockEffect var(--shock-speed, 0.08s) infinite !important;
+        }
+
+        /* 画面を揺らすエフェクト */
+        @keyframes screenShakeEffect {
+            0% { transform: translate(0, 0); }
+            20% { transform: translate(var(--shake-range-x1, -5px), var(--shake-range-y1, 5px)); }
+            40% { transform: translate(var(--shake-range-x2, 5px), var(--shake-range-y2, -5px)); }
+            60% { transform: translate(var(--shake-range-x1, -5px), var(--shake-range-y2, -5px)); }
+            80% { transform: translate(var(--shake-range-x2, 5px), var(--shake-range-y1, 5px)); }
+            100% { transform: translate(0, 0); }
+        }
+        .screen-shake-active {
+            animation: screenShakeEffect var(--shake-speed, 0.05s) infinite !important;
+        }
+    </style>
+</head>
+<body class="p-2 md:p-4 flex items-center justify-center min-h-screen relative text-black">
+
+    <!-- 右上 通知トースト -->
+    <div id="toast-container" class="fixed top-4 right-4 z-[10000] flex flex-col gap-2 pointer-events-none max-w-[calc(100vw-2rem)]"></div>
+
+    <!-- 管理者用モーダル（常時表示） -->
+    <div id="admin-modal" class="fixed inset-0 bg-black/40 flex items-center justify-center p-2 md:p-4 z-50 overflow-y-auto">
+        <div class="bg-white border-2 border-black max-w-3xl w-full p-3 md:p-4 shadow-lg max-h-[92vh] flex flex-col text-xs my-auto text-black">
+            
+            <!-- ヘッダー -->
+            <div class="flex justify-between items-center border-b-2 border-black pb-2 mb-3 shrink-0">
+                <h2 class="text-xs md:text-sm font-bold text-black truncate pr-2">■ 管理者コントロールパネル ■</h2>
+                <div class="text-[10px] md:text-xs text-black font-bold whitespace-nowrap">管理者専用</div>
+            </div>
+
+            <!-- タブ -->
+            <div class="flex border-b border-black mb-3 text-xs font-bold shrink-0">
+                <button id="admin-tab-users-btn" class="flex-1 py-1.5 px-1 text-center bg-white border-t border-l border-r border-black text-black cursor-pointer truncate text-[10px] md:text-xs">
+                    アカウント管理
+                </button>
+                <button id="admin-tab-create-btn" class="flex-1 py-1.5 px-1 text-center bg-gray-100 border border-black border-b-0 text-black cursor-pointer truncate text-[10px] md:text-xs">
+                    作成
+                </button>
+                <button id="admin-tab-threads-btn" class="flex-1 py-1.5 px-1 text-center bg-gray-100 border border-black border-b-0 text-black cursor-pointer truncate text-[10px] md:text-xs">
+                    チャット管理
+                </button>
+                <button id="admin-tab-boards-btn" class="flex-1 py-1.5 px-1 text-center bg-gray-100 border border-black border-b-0 text-black cursor-pointer truncate text-[10px] md:text-xs">
+                    板管理
+                </button>
+                <button id="admin-tab-extra-btn" class="flex-1 py-1.5 px-1 text-center bg-gray-100 border border-black border-b-0 text-black cursor-pointer truncate text-[10px] md:text-xs">
+                    ???
+                </button>
+            </div>
+
+            <!-- スクロール可能なコンテンツエリア -->
+            <div class="overflow-y-auto flex-1 pr-0.5">
+
+                <!-- 1. アカウント管理 -->
+                <div id="admin-section-users" class="space-y-2.5">
+                    <div id="account-count-display" class="font-bold text-black text-xs bg-gray-100 p-2 border border-black"></div>
+                    
+                    <!-- リストタイトル ＋ ハンバーガーメニュー -->
+                    <div class="flex justify-between items-center relative">
+                        <div id="account-list-title" class="font-bold text-black">【登録アカウント一覧 (1秒毎にリロード)】</div>
+                        
+                        <!-- ハンバーガーボタン -->
+                        <div class="relative">
+                            <button type="button" id="hamburger-menu-btn" class="px-2.5 py-1 bg-gray-100 border border-black font-bold text-black text-xs cursor-pointer hover:bg-gray-200">
+                                ☰ 
+                            </button>
+                            <!-- ハンバーガーメニューの中身 -->
+                            <div id="hamburger-dropdown-menu" class="hidden absolute right-0 top-full mt-1 bg-white border border-black shadow-lg z-50 w-48 font-bold text-xs">
+                                <button type="button" id="menu-filter-normal" class="w-full text-left px-3 py-2 hover:bg-gray-100 border-b border-black cursor-pointer">登録アカウント一覧</button>
+                                <button type="button" id="menu-filter-ban" class="w-full text-left px-3 py-2 hover:bg-gray-100 border-b border-black cursor-pointer">BAN中アカウント一覧</button>
+                                <button type="button" id="menu-filter-timeout" class="w-full text-left px-3 py-2 hover:bg-gray-100 cursor-pointer">タイムアウト中一覧</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="admin-users-container" class="space-y-1.5 border border-black p-2.5 bg-gray-50 max-h-56 overflow-y-auto">
+                        <div class="text-black text-xs font-bold">読み込み中...</div>
+                    </div>
+                </div>
+
+                <!-- 2. アカウント作成 -->
+                <div id="admin-section-create" class="space-y-2.5 hidden">
+                    <div class="font-bold text-black">【新規アカウント作成 (最大65個)】</div>
+                    <div>
+                        <label class="block font-bold text-black mb-1">お名前（ニックネーム）:</label>
+                        <input type="text" id="admin-reg-name" placeholder="例：山田" class="w-full border border-black px-2.5 py-1.5 bg-white text-black font-bold">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-black mb-1">肩書き / 二つ名 (選択):</label>
+                        <div class="relative" id="custom-dropdown-container">
+                            <button type="button" id="custom-dropdown-toggle" class="w-full border border-black px-2.5 py-1.5 bg-white text-black font-bold flex justify-between items-center cursor-pointer text-left">
+                                <span id="custom-dropdown-selected-label" class="truncate font-bold">（なし）</span>
+                                <span class="text-[10px] text-black font-bold ml-2 shrink-0">▼</span>
+                            </button>
+                            <div id="custom-dropdown-menu" class="hidden absolute left-0 right-0 top-full mt-1 bg-white border border-black shadow-lg max-h-48 overflow-y-auto z-50"></div>
+                        </div>
+                        <input type="hidden" id="admin-reg-title" value="">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-black mb-1">ID（重複不可）:</label>
+                        <input type="text" id="admin-reg-id" placeholder="半角英数字ID" class="w-full border border-black px-2.5 py-1.5 bg-white text-black font-bold">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-black mb-1">パスワード:</label>
+                        <div class="flex gap-2">
+                            <input type="password" id="admin-reg-pass" placeholder="パスワード" class="w-full border border-black px-2.5 py-1.5 bg-white text-black font-bold">
+                            <button type="button" id="toggle-password-visibility" class="px-3 py-1 bg-gray-200 border border-black font-bold text-black text-xs cursor-pointer hover:bg-gray-300 shrink-0 flex items-center justify-center w-10">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <button id="admin-do-create-btn" class="w-full bg-gray-200 border border-black py-1.5 text-xs font-bold text-black hover:bg-gray-300 cursor-pointer shadow-sm">
+                        アカウントを作成する
+                    </button>
+                </div>
+
+                <!-- 3. チャット管理 -->
+                <div id="admin-section-threads" class="space-y-2.5 hidden">
+                    <div class="font-bold text-black">【スレッド削除管理】</div>
+                    <div>
+                        <label class="block font-bold text-black mb-1">管理する板を選択 (1秒毎にリロード):</label>
+                        <div class="relative" id="custom-board-dropdown-container">
+                            <button type="button" id="custom-board-dropdown-toggle" class="border border-black px-2 py-1.5 bg-white font-bold text-black w-full flex justify-between items-center cursor-pointer text-left">
+                                <span id="custom-board-dropdown-selected-label" class="truncate font-bold">読み込み中...</span>
+                                <span class="text-[10px] text-black font-bold ml-2 shrink-0">▼</span>
+                            </button>
+                            <div id="custom-board-dropdown-menu" class="hidden absolute left-0 right-0 top-full mt-1 bg-white border border-black shadow-lg max-h-48 overflow-y-auto z-50"></div>
+                        </div>
+                        <input type="hidden" id="admin-board-select" value="">
+                    </div>
+                    <div id="admin-threads-container" class="space-y-1.5 border border-black p-2.5 bg-gray-50 max-h-56 overflow-y-auto">
+                        <div class="text-black text-xs font-bold">スレッド読み込み中...</div>
+                    </div>
+                </div>
+
+                <!-- 4. 板管理 -->
+                <div id="admin-section-boards" class="space-y-2.5 hidden">
+                    <div class="font-bold text-black">【板の追加・削除】</div>
+                    <div class="bg-gray-50 border border-black p-2.5 space-y-2">
+                        <div class="font-bold text-xs text-black">■ 新しい板を作成</div>
+                        <div>
+                            <label class="block font-bold text-[11px] text-black mb-0.5">板ID (半角英数字・例: game):</label>
+                            <input type="text" id="new-board-id-input" placeholder="game" class="w-full border border-black px-2 py-1 text-xs bg-white text-black font-bold">
+                        </div>
+                        <div>
+                            <label class="block font-bold text-[11px] text-black mb-0.5">板のタイトル名 (例: ゲーム板):</label>
+                            <input type="text" id="new-board-name-input" placeholder="ゲーム板" class="w-full border border-black px-2 py-1 text-xs bg-white text-black font-bold">
+                        </div>
+                        <div>
+                            <label class="block font-bold text-[11px] text-black mb-0.5">板のパスワード (任意・最大12文字):</label>
+                            <div class="flex gap-2">
+                                <input type="password" id="new-board-pass-input" placeholder="最大12文字" maxlength="12" class="w-full border border-black px-2 py-1 text-xs bg-white text-black font-bold">
+                                <button type="button" id="toggle-board-password-visibility" class="px-3 py-1 bg-gray-200 border border-black font-bold text-black text-xs cursor-pointer hover:bg-gray-300 shrink-0 flex items-center justify-center w-10">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <button id="create-board-btn" class="w-full bg-gray-200 border border-black py-1 text-xs font-bold text-black hover:bg-gray-300 cursor-pointer shadow-sm">
+                            板を追加する
+                        </button>
+                    </div>
+                    <div class="font-bold text-black mt-3">【既存の板一覧 (パスワード変更・確認可)】</div>
+                    <div id="admin-boards-container" class="space-y-1.5 border border-black p-2.5 bg-gray-50 max-h-36 overflow-y-auto">
+                        <div class="text-black text-xs font-bold">読み込み中...</div>
+                    </div>
+                </div>
+
+                <!-- 5. ？？？ -->
+                <div id="admin-section-extra" class="space-y-3 hidden">
+                    <div class="font-bold text-black">【??? タブ】</div>
+                    
+                    <!-- ポリゴンショック機能 -->
+                    <div class="bg-gray-50 border border-black p-3 space-y-2">
+                        <div class="font-bold text-xs text-black flex justify-between items-center">
+                            <span>■ ポリゴンショック</span>
+                            <div class="flex items-center gap-1.5">
+                                <span id="polygon-shock-speed-badge" class="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 border border-red-300">速度: 0.08秒</span>
+                            </div>
+                        </div>
+                        <p class="text-[11px] text-gray-700 font-bold leading-relaxed">
+                            画面全体が赤と青に猛烈なスピードで点滅する特殊効果を発動します。最高速は0.0001秒です。
+                        </p>
+                        <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-1">
+                            <div class="flex items-center gap-2">
+                                <span id="polygon-shock-status-label" class="font-bold text-xs text-black whitespace-nowrap">状態: 停止中</span>
+                                <button id="polygon-shock-toggle-btn" class="px-3 py-1.5 bg-gray-200 border border-black font-bold text-black text-xs cursor-pointer hover:bg-gray-300 shadow-sm shrink-0">
+                                    発動する
+                                </button>
+                            </div>
+
+                            <div class="flex items-center gap-1 flex-1 max-w-xs">
+                                <div class="relative flex-1" id="shock-users-dropdown-container">
+                                    <button type="button" id="shock-users-toggle" class="w-full border border-black px-2 py-1.5 bg-white text-black font-bold flex justify-between items-center cursor-pointer text-left text-xs">
+                                        <span id="shock-users-selected-label" class="truncate font-bold">対象を選択 (∞)</span>
+                                        <span class="text-[10px] text-black font-bold ml-1 shrink-0">▼</span>
+                                    </button>
+                                    <div id="shock-users-menu" class="hidden absolute left-0 right-0 top-full mt-1 bg-white border border-black shadow-lg max-h-48 overflow-y-auto z-50"></div>
+                                </div>
+
+                                <div class="relative">
+                                    <button type="button" id="shock-hamburger-btn" class="px-2.5 py-1.5 bg-white border border-black font-bold text-black text-xs cursor-pointer hover:bg-gray-100 shrink-0">
+                                        ☰
+                                    </button>
+                                    <div id="shock-hamburger-menu" class="hidden absolute right-0 top-full mt-1 bg-white border border-black shadow-lg z-50 w-56 font-bold text-xs">
+                                        <button type="button" id="shock-menu-color-1" class="w-full text-left px-3 py-2 hover:bg-gray-100 border-b border-black cursor-pointer flex items-center justify-between">
+                                            <span>1・色を変える</span>
+                                            <span id="menu-color-chip-1" class="w-3.5 h-3.5 border border-black inline-block shrink-0" style="background-color: #ff0000;"></span>
+                                        </button>
+                                        <button type="button" id="shock-menu-color-2" class="w-full text-left px-3 py-2 hover:bg-gray-100 border-b border-black cursor-pointer flex items-center justify-between">
+                                            <span>2・色を変える</span>
+                                            <span id="menu-color-chip-2" class="w-3.5 h-3.5 border border-black inline-block shrink-0" style="background-color: #0000ff;"></span>
+                                        </button>
+                                        <button type="button" id="shock-menu-speed" class="w-full text-left px-3 py-2 hover:bg-gray-100 cursor-pointer">3・点滅速度を変える</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="shock-selected-users-tags" class="flex flex-wrap gap-1 pt-1"></div>
+                    </div>
+
+                    <!-- 画面を揺らす機能 -->
+                    <div class="bg-gray-50 border border-black p-3 space-y-2">
+                        <div class="font-bold text-xs text-black flex justify-between items-center">
+                            <span>■ 画面を揺らす</span>
+                            <div class="flex items-center gap-1.5">
+                                <span id="screen-shake-speed-badge" class="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 border border-blue-300">速度: 0.05秒 / 範囲: 5px</span>
+                            </div>
+                        </div>
+                        <p class="text-[11px] text-gray-700 font-bold leading-relaxed">
+                            画面全体が激しく揺れ動く特殊効果を発動します。
+                        </p>
+                        <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-1">
+                            <div class="flex items-center gap-2">
+                                <span id="screen-shake-status-label" class="font-bold text-xs text-black whitespace-nowrap">状態: 停止中</span>
+                                <button id="screen-shake-toggle-btn" class="px-3 py-1.5 bg-gray-200 border border-black font-bold text-black text-xs cursor-pointer hover:bg-gray-300 shadow-sm shrink-0">
+                                    発動する
+                                </button>
+                            </div>
+
+                            <div class="flex items-center gap-1 flex-1 max-w-xs">
+                                <div class="relative flex-1" id="shake-users-dropdown-container">
+                                    <button type="button" id="shake-users-toggle" class="w-full border border-black px-2 py-1.5 bg-white text-black font-bold flex justify-between items-center cursor-pointer text-left text-xs">
+                                        <span id="shake-users-selected-label" class="truncate font-bold">対象を選択 (∞)</span>
+                                        <span class="text-[10px] text-black font-bold ml-1 shrink-0">▼</span>
+                                    </button>
+                                    <div id="shake-users-menu" class="hidden absolute left-0 right-0 top-full mt-1 bg-white border border-black shadow-lg max-h-48 overflow-y-auto z-50"></div>
+                                </div>
+
+                                <div class="relative">
+                                    <button type="button" id="shake-hamburger-btn" class="px-2.5 py-1.5 bg-white border border-black font-bold text-black text-xs cursor-pointer hover:bg-gray-100 shrink-0">
+                                        ☰
+                                    </button>
+                                    <div id="shake-hamburger-menu" class="hidden absolute right-0 top-full mt-1 bg-white border border-black shadow-lg z-50 w-52 font-bold text-xs">
+                                        <button type="button" id="shake-menu-speed" class="w-full text-left px-3 py-2 hover:bg-gray-100 border-b border-black cursor-pointer">1・揺れる速度を変える</button>
+                                        <button type="button" id="shake-menu-range" class="w-full text-left px-3 py-2 hover:bg-gray-100 cursor-pointer">2・揺れる範囲を変える</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="shake-selected-users-tags" class="flex flex-wrap gap-1 pt-1"></div>
+                    </div>
+
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- 色選択用 カスタムモーダル（ドロップダウン式） -->
+    <div id="custom-color-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[9999]">
+        <div class="bg-white border-2 border-black max-w-xs w-full p-3 shadow-xl flex flex-col text-xs space-y-2 text-black font-bold">
+            <div id="custom-color-modal-title" class="font-bold text-black border-b border-black pb-1">色を選択</div>
+            <div id="custom-color-modal-list" class="max-h-60 overflow-y-auto space-y-1 border border-black p-1.5 bg-gray-50"></div>
+            <button id="custom-color-modal-close" class="w-full bg-gray-200 border border-black py-1 font-bold text-black hover:bg-gray-300 cursor-pointer">キャンセル</button>
+        </div>
+    </div>
+
+    <!-- 肩書き変更用 カスタムモーダル -->
+    <div id="custom-title-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[9999]">
+        <div class="bg-white border-2 border-black max-w-xs w-full p-3 shadow-xl flex flex-col text-xs space-y-2 text-black font-bold">
+            <div class="font-bold text-black border-b border-black pb-1">肩書きを選択</div>
+            <div id="custom-title-modal-list" class="max-h-60 overflow-y-auto space-y-1 border border-black p-1.5 bg-gray-50"></div>
+            <button id="custom-title-modal-close" class="w-full bg-gray-200 border border-black py-1 font-bold text-black hover:bg-gray-300 cursor-pointer">キャンセル</button>
+        </div>
+    </div>
+
+    <!-- タイムアウト設定用 カスタムモーダル -->
+    <div id="custom-timeout-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[9999]">
+        <div class="bg-white border-2 border-black max-w-xs w-full p-3 shadow-xl flex flex-col text-xs space-y-2.5 text-black font-bold">
+            <div class="font-bold text-black border-b border-black pb-1">タイムアウト設定</div>
+            <div>
+                <label class="block text-black mb-1">数値を入力:</label>
+                <input type="number" id="timeout-input-val" value="30" min="1" class="w-full border border-black px-2.5 py-1.5 bg-white text-black font-bold">
+            </div>
+            <div>
+                <label class="block text-black mb-1">単位を選択:</label>
+                <div class="relative" id="timeout-unit-dropdown-container">
+                    <button type="button" id="timeout-unit-toggle" class="w-full border border-black px-2.5 py-1.5 bg-white text-black font-bold flex justify-between items-center cursor-pointer text-left">
+                        <span id="timeout-unit-label" class="truncate font-bold">分</span>
+                        <span class="text-[10px] text-black font-bold ml-2 shrink-0">▼</span>
+                    </button>
+                    <div id="timeout-unit-menu" class="hidden absolute left-0 right-0 top-full mt-1 bg-white border border-black shadow-lg z-50">
+                        <div class="timeout-unit-option px-2.5 py-1.5 cursor-pointer hover:bg-gray-200" data-unit="1">分</div>
+                        <div class="timeout-unit-option px-2.5 py-1.5 cursor-pointer hover:bg-gray-200" data-unit="2">時間</div>
+                        <div class="timeout-unit-option px-2.5 py-1.5 cursor-pointer hover:bg-gray-200" data-unit="3">日</div>
+                        <div class="timeout-unit-option px-2.5 py-1.5 cursor-pointer hover:bg-gray-200" data-unit="4">週間</div>
+                        <div class="timeout-unit-option px-2.5 py-1.5 cursor-pointer hover:bg-gray-200" data-unit="5">ヶ月</div>
+                        <div class="timeout-unit-option px-2.5 py-1.5 cursor-pointer hover:bg-gray-200" data-unit="6">年</div>
+                    </div>
+                </div>
+                <input type="hidden" id="timeout-input-unit" value="1">
+            </div>
+            <div class="flex gap-2 pt-1">
+                <button id="timeout-modal-ok" class="flex-1 bg-gray-200 border border-black py-1.5 font-bold text-black hover:bg-gray-300 cursor-pointer">設定</button>
+                <button id="timeout-modal-close" class="flex-1 bg-gray-200 border border-black py-1.5 font-bold text-black hover:bg-gray-300 cursor-pointer">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, push, set, update, remove, onValue, get } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        const firebaseConfig = {
+          apiKey: "AIzaSyAm3rUD0n-7b9syhIKmgp0FLVjiduEk8KY",
+          authDomain: "chat-d8eb0.firebaseapp.com",
+          databaseURL: "https://chat-d8eb0-default-rtdb.firebaseio.com",
+          projectId: "chat-d8eb0",
+          storageBucket: "chat-d8eb0.firebasestorage.app",
+          messagingSenderId: "1072576882638",
+          appId: "1:1072576882638:web:b47c85ba653915891dad9f",
+          measurementId: "G-PYFR9KS2ZJ"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        const titleList = [
+            "ドパガキ", "厨二病", "ヤリチン", "ヤリマン", "ホモ", "ゲイ🏳‍🌈", 
+            "うんち", "マセガキ", "とても下品", "ダニエル愛好家", "キチガイ", 
+            "ガイジ", "ちー牛", "モデレーター", "管理者", "???", "イクゥー", "あんあん"
+        ];
+
+        const colorMasterList = [
+            { label: "赤 (Red)", value: "#ff0000" },
+            { label: "青 (Blue)", value: "#0000ff" },
+            { label: "緑 (Green)", value: "#00ff00" },
+            { label: "黄 (Yellow)", value: "#ffff00" },
+            { label: "黒 (Black)", value: "#000000" },
+            { label: "白 (White)", value: "#ffffff" },
+            { label: "ピンク (Pink)", value: "#ff69b4" },
+            { label: "オレンジ (Orange)", value: "#ffa500" },
+            { label: "紫 (Purple)", value: "#800080" },
+            { label: "シアン (Cyan)", value: "#00ffff" }
+        ];
+
+        function setupCustomDropdown(toggleBtnId, menuId, hiddenInputId, labelId, items, onSelectCallback) {
+            const toggleBtn = document.getElementById(toggleBtnId);
+            const menu = document.getElementById(menuId);
+            const hiddenInput = document.getElementById(hiddenInputId);
+            const label = document.getElementById(labelId);
+
+            function renderItems(currentVal) {
+                menu.innerHTML = '';
+                items.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = `px-2.5 py-1.5 cursor-pointer hover:bg-gray-200 text-xs truncate text-black font-bold ${item.value === currentVal ? 'bg-gray-100 font-bold' : ''}`;
+                    div.textContent = item.label;
+                    div.addEventListener('click', () => {
+                        hiddenInput.value = item.value;
+                        label.textContent = item.label;
+                        menu.classList.add('hidden');
+                        if (onSelectCallback) onSelectCallback(item.value);
+                    });
+                    menu.appendChild(div);
+                });
+            }
+
+            toggleBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                document.querySelectorAll('[id$="-menu"]').forEach(m => {
+                    if (m !== menu) m.classList.add('hidden');
+                });
+                renderItems(hiddenInput.value);
+                menu.classList.toggle('hidden');
+            });
+
+            return {
+                setValue: (val, dispText) => {
+                    hiddenInput.value = val;
+                    label.textContent = dispText;
+                },
+                updateItems: (newItems) => {
+                    items = newItems;
+                }
+            };
+        }
+
+        const titleDropdownItems = [{ value: "", label: "（なし）" }, ...titleList.map(t => ({ value: t, label: t }))];
+        const createTitleDropdown = setupCustomDropdown(
+            'custom-dropdown-toggle',
+            'custom-dropdown-menu',
+            'admin-reg-title',
+            'custom-dropdown-selected-label',
+            titleDropdownItems
+        );
+
+        document.addEventListener('click', () => {
+            document.querySelectorAll('[id$="-menu"]').forEach(m => m.classList.add('hidden'));
+        });
+
+        const eyeOpenSvg = `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>`;
+        const eyeClosedSvg = `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path></svg>`;
+
+        const togglePassBtn = document.getElementById('toggle-password-visibility');
+        const adminRegPass = document.getElementById('admin-reg-pass');
+        togglePassBtn.addEventListener('click', () => {
+            if (adminRegPass.type === 'password') {
+                adminRegPass.type = 'text';
+                togglePassBtn.innerHTML = eyeOpenSvg;
+            } else {
+                adminRegPass.type = 'password';
+                togglePassBtn.innerHTML = eyeClosedSvg;
+            }
+        });
+
+        const toggleBoardPassBtn = document.getElementById('toggle-board-password-visibility');
+        const newBoardPassInput = document.getElementById('new-board-pass-input');
+        toggleBoardPassBtn.addEventListener('click', () => {
+            if (newBoardPassInput.type === 'password') {
+                newBoardPassInput.type = 'text';
+                toggleBoardPassBtn.innerHTML = eyeOpenSvg;
+            } else {
+                newBoardPassInput.type = 'password';
+                toggleBoardPassBtn.innerHTML = eyeClosedSvg;
+            }
+        });
+
+        const adminTabUsersBtn = document.getElementById('admin-tab-users-btn');
+        const adminTabCreateBtn = document.getElementById('admin-tab-create-btn');
+        const adminTabThreadsBtn = document.getElementById('admin-tab-threads-btn');
+        const adminTabBoardsBtn = document.getElementById('admin-tab-boards-btn');
+        const adminTabExtraBtn = document.getElementById('admin-tab-extra-btn');
+
+        const adminSectionUsers = document.getElementById('admin-section-users');
+        const adminSectionCreate = document.getElementById('admin-section-create');
+        const adminSectionThreads = document.getElementById('admin-section-threads');
+        const adminSectionBoards = document.getElementById('admin-section-boards');
+        const adminSectionExtra = document.getElementById('admin-section-extra');
+
+        const accountCountDisplay = document.getElementById('account-count-display');
+        const accountListTitle = document.getElementById('account-list-title');
+        const adminUsersContainer = document.getElementById('admin-users-container');
+        const adminBoardSelect = document.getElementById('admin-board-select');
+        const customBoardDropdownSelectedLabel = document.getElementById('custom-board-dropdown-selected-label');
+        const adminThreadsContainer = document.getElementById('admin-threads-container');
+        const newBoardIdInput = document.getElementById('new-board-id-input');
+        const newBoardNameInput = document.getElementById('new-board-name-input');
+        const createBoardBtn = document.getElementById('create-board-btn');
+        const adminBoardsContainer = document.getElementById('admin-boards-container');
+        const toastContainer = document.getElementById('toast-container');
+
+        const hamburgerMenuBtn = document.getElementById('hamburger-menu-btn');
+        const hamburgerDropdownMenu = document.getElementById('hamburger-dropdown-menu');
+
+        hamburgerMenuBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            hamburgerDropdownMenu.classList.toggle('hidden');
+        });
+
+        let currentAccountViewMode = 'normal';
+
+        document.getElementById('menu-filter-normal').addEventListener('click', () => {
+            currentAccountViewMode = 'normal';
+            accountListTitle.textContent = '【登録アカウント一覧 (1秒毎にリロード)】';
+            hamburgerDropdownMenu.classList.add('hidden');
+            loadAdminUsers();
+        });
+
+        document.getElementById('menu-filter-ban').addEventListener('click', () => {
+            currentAccountViewMode = 'ban';
+            accountListTitle.textContent = '【BAN中アカウント一覧 (1秒毎にリロード)】';
+            hamburgerDropdownMenu.classList.add('hidden');
+            loadAdminUsers();
+        });
+
+        document.getElementById('menu-filter-timeout').addEventListener('click', () => {
+            currentAccountViewMode = 'timeout';
+            accountListTitle.textContent = '【タイムアウト中アカウント一覧 (1秒毎にリロード)】';
+            hamburgerDropdownMenu.classList.add('hidden');
+            loadAdminUsers();
+        });
+
+        function showToast(message) {
+            const toast = document.createElement('div');
+            toast.className = "pointer-events-auto bg-[#FDFDFD] text-black font-bold px-3 py-2 border border-black text-xs shadow-lg flex items-center justify-between gap-3 animate-fade min-w-[200px]";
+            toast.innerHTML = `
+                <span class="break-all text-black font-bold">${message}</span>
+                <button class="toast-close text-black font-bold text-sm px-1 cursor-pointer shrink-0">×</button>
+            `;
+            const closeBtn = toast.querySelector('.toast-close');
+            let timeoutId = setTimeout(() => {
+                if (toast.parentElement) toast.remove();
+            }, 1200);
+            closeBtn.addEventListener('click', () => {
+                clearTimeout(timeoutId);
+                toast.remove();
+            });
+            toastContainer.appendChild(toast);
+        }
+
+        function escapeHtml(str) {
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+        }
+
+        function formatDisplayId(id, customTitle) {
+            if (customTitle && customTitle.trim() !== "") {
+                return `${id}. ${customTitle.trim()}`;
+            }
+            return id;
+        }
+
+        const customTimeoutModal = document.getElementById('custom-timeout-modal');
+        const timeoutInputVal = document.getElementById('timeout-input-val');
+        const timeoutInputUnit = document.getElementById('timeout-input-unit');
+        const timeoutUnitToggle = document.getElementById('timeout-unit-toggle');
+        const timeoutUnitMenu = document.getElementById('timeout-unit-menu');
+        const timeoutUnitLabel = document.getElementById('timeout-unit-label');
+        const timeoutModalOk = document.getElementById('timeout-modal-ok');
+        const timeoutModalClose = document.getElementById('timeout-modal-close');
+
+        let timeoutModalCallback = null;
+
+        timeoutUnitToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            document.querySelectorAll('[id$="-menu"]').forEach(m => {
+                if (m !== timeoutUnitMenu) m.classList.add('hidden');
+            });
+            timeoutUnitMenu.classList.toggle('hidden');
+        });
+
+        document.querySelectorAll('.timeout-unit-option').forEach(opt => {
+            opt.addEventListener('click', () => {
+                timeoutInputUnit.value = opt.getAttribute('data-unit');
+                timeoutUnitLabel.textContent = opt.textContent;
+                timeoutUnitMenu.classList.add('hidden');
+            });
+        });
+
+        function openTimeoutModal(callback) {
+            timeoutInputVal.value = "30";
+            timeoutInputUnit.value = "1";
+            timeoutUnitLabel.textContent = "分";
+            timeoutUnitMenu.classList.add('hidden');
+            timeoutModalCallback = callback;
+            customTimeoutModal.classList.remove('hidden');
+        }
+
+        timeoutModalClose.addEventListener('click', () => {
+            customTimeoutModal.classList.add('hidden');
+            timeoutModalCallback = null;
+        });
+
+        timeoutModalOk.addEventListener('click', () => {
+            const num = parseInt(timeoutInputVal.value, 10);
+            if (isNaN(num) || num <= 0) {
+                alert("有効な数値を入力してください。");
+                return;
+            }
+            const unit = timeoutInputUnit.value;
+            const now = Date.now();
+            let ms = 0;
+            switch(unit) {
+                case '1': ms = num * 60 * 1000; break;
+                case '2': ms = num * 60 * 60 * 1000; break;
+                case '3': ms = num * 24 * 60 * 60 * 1000; break;
+                case '4': ms = num * 7 * 24 * 60 * 60 * 1000; break;
+                case '5': ms = num * 30 * 24 * 60 * 60 * 1000; break;
+                case '6': ms = num * 365 * 24 * 60 * 60 * 1000; break;
+            }
+            const targetTime = now + ms;
+            customTimeoutModal.classList.add('hidden');
+            if (timeoutModalCallback) timeoutModalCallback(targetTime);
+            timeoutModalCallback = null;
+        });
+
+        // ポリゴンショック関連
+        const polygonShockToggleBtn = document.getElementById('polygon-shock-toggle-btn');
+        const polygonShockStatusLabel = document.getElementById('polygon-shock-status-label');
+        const polygonShockSpeedBadge = document.getElementById('polygon-shock-speed-badge');
+        let isPolygonShockActive = false;
+
+        const shockUsersToggle = document.getElementById('shock-users-toggle');
+        const shockUsersMenu = document.getElementById('shock-users-menu');
+        const shockUsersSelectedLabel = document.getElementById('shock-users-selected-label');
+        const shockSelectedUsersTags = document.getElementById('shock-selected-users-tags');
+        
+        let selectedShockUsers = []; 
+        let allRegistryUsers = {};   
+
+        const shockHamburgerBtn = document.getElementById('shock-hamburger-btn');
+        const shockHamburgerMenu = document.getElementById('shock-hamburger-menu');
+        const shockMenuColor1 = document.getElementById('shock-menu-color-1');
+        const shockMenuColor2 = document.getElementById('shock-menu-color-2');
+        const shockMenuSpeed = document.getElementById('shock-menu-speed');
+        const menuColorChip1 = document.getElementById('menu-color-chip-1');
+        const menuColorChip2 = document.getElementById('menu-color-chip-2');
+
+        let color1State = '#ff0000';
+        let color2State = '#0000ff';
+        let shockSpeedState = 0.08;
+
+        shockHamburgerBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            document.querySelectorAll('[id$="-menu"]').forEach(m => {
+                if (m !== shockHamburgerMenu) m.classList.add('hidden');
+            });
+            shockHamburgerMenu.classList.toggle('hidden');
+        });
+
+        function checkColorsAndNotify() {
+            if (color1State === color2State) {
+                showToast("エラー：交互になるようにしてください");
+            }
+        }
+
+        function applyShockStyles() {
+            document.documentElement.style.setProperty('--shock-color-1', color1State);
+            document.documentElement.style.setProperty('--shock-color-2', color2State);
+            document.documentElement.style.setProperty('--shock-speed', shockSpeedState + 's');
+            polygonShockSpeedBadge.textContent = `速度: ${shockSpeedState}秒`;
+            menuColorChip1.style.backgroundColor = color1State;
+            menuColorChip2.style.backgroundColor = color2State;
+        }
+
+        const customColorModal = document.getElementById('custom-color-modal');
+        const customColorModalTitle = document.getElementById('custom-color-modal-title');
+        const customColorModalList = document.getElementById('custom-color-modal-list');
+        const customColorModalClose = document.getElementById('custom-color-modal-close');
+
+        function openColorSelectModal(titleText, currentColor, onSelect) {
+            customColorModalTitle.textContent = titleText;
+            customColorModalList.innerHTML = '';
+            
+            colorMasterList.forEach(item => {
+                const div = document.createElement('div');
+                div.className = `p-1.5 cursor-pointer hover:bg-gray-200 truncate text-black font-bold flex items-center justify-between ${item.value === currentColor ? 'bg-gray-100' : ''}`;
+                div.innerHTML = `<span>${item.label}</span><span class="w-4 h-4 border border-black shrink-0" style="background-color: ${item.value};"></span>`;
+                div.addEventListener('click', () => {
+                    customColorModal.classList.add('hidden');
+                    onSelect(item.value);
+                });
+                customColorModalList.appendChild(div);
+            });
+            customColorModal.classList.remove('hidden');
+        }
+
+        customColorModalClose.addEventListener('click', () => {
+            customColorModal.classList.add('hidden');
+        });
+
+        shockMenuColor1.addEventListener('click', (e) => {
+            e.stopPropagation();
+            shockHamburgerMenu.classList.add('hidden');
+            openColorSelectModal("「1・色を変える」の色を選択", color1State, (selectedColor) => {
+                color1State = selectedColor;
+                applyShockStyles();
+                showToast(`1の色を変更しました`);
+                checkColorsAndNotify();
+            });
+        });
+
+        shockMenuColor2.addEventListener('click', (e) => {
+            e.stopPropagation();
+            shockHamburgerMenu.classList.add('hidden');
+            openColorSelectModal("「2・色を変える」の色を選択", color2State, (selectedColor) => {
+                color2State = selectedColor;
+                applyShockStyles();
+                showToast(`2の色を変更しました`);
+                checkColorsAndNotify();
+            });
+        });
+
+        shockMenuSpeed.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const inputSpeed = prompt("「3・点滅速度を変える」の秒数を入力してください（例: 0.08, 1, 最高速は 0.0001）:", shockSpeedState);
+            if (inputSpeed !== null) {
+                let parsed = parseFloat(inputSpeed);
+                if (!isNaN(parsed) && parsed > 0) {
+                    if (parsed < 0.0001) parsed = 0.0001;
+                    shockSpeedState = parsed;
+                    applyShockStyles();
+                    showToast(`点滅速度を「${shockSpeedState}秒」に変更しました`);
+                } else {
+                    alert("有効な数値を入力してください。");
+                }
+            }
+            shockHamburgerMenu.classList.add('hidden');
+        });
+
+        shockUsersToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            document.querySelectorAll('[id$="-menu"]').forEach(m => {
+                if (m !== shockUsersMenu) m.classList.add('hidden');
+            });
+            renderShockUsersMenu();
+            shockUsersMenu.classList.toggle('hidden');
+        });
+
+        function renderShockUsersMenu() {
+            shockUsersMenu.innerHTML = '';
+            const userKeys = Object.keys(allRegistryUsers);
+            
+            const allDiv = document.createElement('div');
+            const isAllSelected = userKeys.length > 0 && userKeys.every(id => selectedShockUsers.includes(id));
+            allDiv.className = `px-2.5 py-1.5 cursor-pointer hover:bg-gray-200 text-xs truncate text-black font-bold flex justify-between items-center border-b border-black ${isAllSelected ? 'bg-gray-100 font-bold' : ''}`;
+            allDiv.innerHTML = `<span>👥 皆 (すべて選択/解除)</span><span>${isAllSelected ? '✔' : ''}</span>`;
+            allDiv.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (isAllSelected) {
+                    selectedShockUsers = [];
+                } else {
+                    selectedShockUsers = [...userKeys];
+                }
+                updateShockUsersDisplay();
+                renderShockUsersMenu();
+            });
+            shockUsersMenu.appendChild(allDiv);
+
+            if (userKeys.length === 0) {
+                const div = document.createElement('div');
+                div.className = "px-2.5 py-1.5 text-xs text-black font-bold";
+                div.textContent = "アカウントがありません";
+                shockUsersMenu.appendChild(div);
+                return;
+            }
+
+            userKeys.forEach(id => {
+                const u = allRegistryUsers[id];
+                const isSelected = selectedShockUsers.includes(id);
+                const div = document.createElement('div');
+                div.className = `px-2.5 py-1.5 cursor-pointer hover:bg-gray-200 text-xs truncate text-black font-bold flex justify-between items-center ${isSelected ? 'bg-gray-100 font-bold' : ''}`;
+                div.innerHTML = `<span>${escapeHtml(id)} (${escapeHtml(u.name || '')})</span><span>${isSelected ? '✔' : ''}</span>`;
+                
+                div.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (isSelected) {
+                        selectedShockUsers = selectedShockUsers.filter(item => item !== id);
+                    } else {
+                        selectedShockUsers.push(id);
+                    }
+                    updateShockUsersDisplay();
+                    renderShockUsersMenu();
+                });
+                shockUsersMenu.appendChild(div);
+            });
+        }
+
+        function updateShockUsersDisplay() {
+            shockSelectedUsersTags.innerHTML = '';
+            const userKeys = Object.keys(allRegistryUsers);
+            const isAllSelected = userKeys.length > 0 && userKeys.every(id => selectedShockUsers.includes(id));
+
+            if (selectedShockUsers.length === 0) {
+                shockUsersSelectedLabel.textContent = "対象を選択 (∞)";
+            } else if (isAllSelected) {
+                shockUsersSelectedLabel.textContent = "選択中: 皆 (全員)";
+            } else {
+                shockUsersSelectedLabel.textContent = `選択中: ${selectedShockUsers.length}人`;
+                selectedShockUsers.forEach(id => {
+                    const tag = document.createElement('div');
+                    tag.className = "inline-flex items-center gap-1 bg-gray-100 border border-black px-2 py-0.5 text-[11px] font-bold text-black";
+                    tag.innerHTML = `<span>${escapeHtml(id)}</span><button type="button" class="text-black font-bold hover:text-red-600 cursor-pointer ml-1">×</button>`;
+                    tag.querySelector('button').addEventListener('click', () => {
+                        selectedShockUsers = selectedShockUsers.filter(item => item !== id);
+                        updateShockUsersDisplay();
+                    });
+                    shockSelectedUsersTags.appendChild(tag);
+                });
+            }
+        }
+
+        polygonShockToggleBtn.addEventListener('click', () => {
+            isPolygonShockActive = !isPolygonShockActive;
+            if (isPolygonShockActive) {
+                applyShockStyles();
+                document.body.classList.add('polygon-shock-active');
+                polygonShockStatusLabel.textContent = '状態: 発動中';
+                polygonShockToggleBtn.textContent = '停止する';
+                showToast(`ポリゴンショック発動中！`);
+            } else {
+                document.body.classList.remove('polygon-shock-active');
+                polygonShockStatusLabel.textContent = '状態: 停止中';
+                polygonShockToggleBtn.textContent = '発動する';
+                showToast("ポリゴンショックを停止しました");
+            }
+        });
+
+        // 画面を揺らす機能のロジック
+        const screenShakeToggleBtn = document.getElementById('screen-shake-toggle-btn');
+        const screenShakeStatusLabel = document.getElementById('screen-shake-status-label');
+        const screenShakeSpeedBadge = document.getElementById('screen-shake-speed-badge');
+        let isScreenShakeActive = false;
+
+        const shakeUsersToggle = document.getElementById('shake-users-toggle');
+        const shakeUsersMenu = document.getElementById('shake-users-menu');
+        const shakeUsersSelectedLabel = document.getElementById('shake-users-selected-label');
+        const shakeSelectedUsersTags = document.getElementById('shake-selected-users-tags');
+        
+        let selectedShakeUsers = []; 
+
+        const shakeHamburgerBtn = document.getElementById('shake-hamburger-btn');
+        const shakeHamburgerMenu = document.getElementById('shake-hamburger-menu');
+        const shakeMenuSpeedBtn = document.getElementById('shake-menu-speed');
+        const shakeMenuRangeBtn = document.getElementById('shake-menu-range');
+
+        let shakeSpeedState = 0.05; 
+        let shakeRangeState = 5;  
+
+        shakeHamburgerBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            document.querySelectorAll('[id$="-menu"]').forEach(m => {
+                if (m !== shakeHamburgerMenu) m.classList.add('hidden');
+            });
+            shakeHamburgerMenu.classList.toggle('hidden');
+        });
+
+        function applyShakeStyles() {
+            document.documentElement.style.setProperty('--shake-speed', shakeSpeedState + 's');
+            document.documentElement.style.setProperty('--shake-range-x1', `-${shakeRangeState}px`);
+            document.documentElement.style.setProperty('--shake-range-x2', `${shakeRangeState}px`);
+            document.documentElement.style.setProperty('--shake-range-y1', `${shakeRangeState}px`);
+            document.documentElement.style.setProperty('--shake-range-y2', `-${shakeRangeState}px`);
+            screenShakeSpeedBadge.textContent = `速度: ${shakeSpeedState}秒 / 範囲: ${shakeRangeState}px`;
+        }
+
+        shakeMenuSpeedBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const inputSpeed = prompt("「1・揺れる速度を変える」の秒数を入力してください（例: 0.05, 0.2）:", shakeSpeedState);
+            if (inputSpeed !== null) {
+                let parsed = parseFloat(inputSpeed);
+                if (!isNaN(parsed) && parsed > 0) {
+                    if (parsed < 0.0001) parsed = 0.0001;
+                    shakeSpeedState = parsed;
+                    applyShakeStyles();
+                    showToast(`揺れる速度を「${shakeSpeedState}秒」に変更しました`);
+                } else {
+                    alert("有効な数値を入力してください。");
+                }
+            }
+            shakeHamburgerMenu.classList.add('hidden');
+        });
+
+        shakeMenuRangeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const inputRange = prompt("「2・揺れる範囲を変える」のピクセル数（px）を入力してください（例: 5, 20, 50）:", shakeRangeState);
+            if (inputRange !== null) {
+                let parsed = parseInt(inputRange, 10);
+                if (!isNaN(parsed) && parsed >= 0) {
+                    shakeRangeState = parsed;
+                    applyShakeStyles();
+                    showToast(`揺れる範囲を「${shakeRangeState}px」に変更しました`);
+                } else {
+                    alert("有効な数値を入力してください。");
+                }
+            }
+            shakeHamburgerMenu.classList.add('hidden');
+        });
+
+        shakeUsersToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            document.querySelectorAll('[id$="-menu"]').forEach(m => {
+                if (m !== shakeUsersMenu) m.classList.add('hidden');
+            });
+            renderShakeUsersMenu();
+            shakeUsersMenu.classList.toggle('hidden');
+        });
+
+        function renderShakeUsersMenu() {
+            shakeUsersMenu.innerHTML = '';
+            const userKeys = Object.keys(allRegistryUsers);
+            
+            const allDiv = document.createElement('div');
+            const isAllSelected = userKeys.length > 0 && userKeys.every(id => selectedShakeUsers.includes(id));
+            allDiv.className = `px-2.5 py-1.5 cursor-pointer hover:bg-gray-200 text-xs truncate text-black font-bold flex justify-between items-center border-b border-black ${isAllSelected ? 'bg-gray-100 font-bold' : ''}`;
+            allDiv.innerHTML = `<span>👥 皆 (すべて選択/解除)</span><span>${isAllSelected ? '✔' : ''}</span>`;
+            allDiv.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (isAllSelected) {
+                    selectedShakeUsers = [];
+                } else {
+                    selectedShakeUsers = [...userKeys];
+                }
+                updateShakeUsersDisplay();
+                renderShakeUsersMenu();
+            });
+            shakeUsersMenu.appendChild(allDiv);
+
+            if (userKeys.length === 0) {
+                const div = document.createElement('div');
+                div.className = "px-2.5 py-1.5 text-xs text-black font-bold";
+                div.textContent = "アカウントがありません";
+                shakeUsersMenu.appendChild(div);
+                return;
+            }
+
+            userKeys.forEach(id => {
+                const u = allRegistryUsers[id];
+                const isSelected = selectedShakeUsers.includes(id);
+                const div = document.createElement('div');
+                div.className = `px-2.5 py-1.5 cursor-pointer hover:bg-gray-200 text-xs truncate text-black font-bold flex justify-between items-center ${isSelected ? 'bg-gray-100 font-bold' : ''}`;
+                div.innerHTML = `<span>${escapeHtml(id)} (${escapeHtml(u.name || '')})</span><span>${isSelected ? '✔' : ''}</span>`;
+                
+                div.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (isSelected) {
+                        selectedShakeUsers = selectedShakeUsers.filter(item => item !== id);
+                    } else {
+                        selectedShakeUsers.push(id);
+                    }
+                    updateShakeUsersDisplay();
+                    renderShakeUsersMenu();
+                });
+                shakeUsersMenu.appendChild(div);
+            });
+        }
+
+        function updateShakeUsersDisplay() {
+            shakeSelectedUsersTags.innerHTML = '';
+            const userKeys = Object.keys(allRegistryUsers);
+            const isAllSelected = userKeys.length > 0 && userKeys.every(id => selectedShakeUsers.includes(id));
+
+            if (selectedShakeUsers.length === 0) {
+                shakeUsersSelectedLabel.textContent = "対象を選択 (∞)";
+            } else if (isAllSelected) {
+                shakeUsersSelectedLabel.textContent = "選択中: 皆 (全員)";
+            } else {
+                shakeUsersSelectedLabel.textContent = `選択中: ${selectedShakeUsers.length}人`;
+                selectedShakeUsers.forEach(id => {
+                    const tag = document.createElement('div');
+                    tag.className = "inline-flex items-center gap-1 bg-gray-100 border border-black px-2 py-0.5 text-[11px] font-bold text-black";
+                    tag.innerHTML = `<span>${escapeHtml(id)}</span><button type="button" class="text-black font-bold hover:text-red-600 cursor-pointer ml-1">×</button>`;
+                    tag.querySelector('button').addEventListener('click', () => {
+                        selectedShakeUsers = selectedShakeUsers.filter(item => item !== id);
+                        updateShakeUsersDisplay();
+                    });
+                    shakeSelectedUsersTags.appendChild(tag);
+                });
+            }
+        }
+
+        screenShakeToggleBtn.addEventListener('click', () => {
+            isScreenShakeActive = !isScreenShakeActive;
+            if (isScreenShakeActive) {
+                applyShakeStyles();
+                document.body.classList.add('screen-shake-active');
+                screenShakeStatusLabel.textContent = '状態: 発動中';
+                screenShakeToggleBtn.textContent = '停止する';
+                showToast(`画面を揺らすエフェクト発動中！`);
+            } else {
+                document.body.classList.remove('screen-shake-active');
+                screenShakeStatusLabel.textContent = '状態: 停止中';
+                screenShakeToggleBtn.textContent = '発動する';
+                showToast("画面を揺らすエフェクトを停止しました");
+            }
+        });
+
+        applyShockStyles();
+        applyShakeStyles();
+
+        async function initDefaultData() {
+            const boardsMetaRef = ref(db, 'board_meta');
+            const snap = await get(boardsMetaRef);
+            if (!snap.exists()) {
+                await set(ref(db, 'board_meta/zatudan'), { name: '雑談板', password: '' });
+                await set(ref(db, 'board_meta/news'), { name: 'ニュース速報板', password: '' });
+                await set(ref(db, 'board_meta/any'), { name: 'なんでもあり', password: '' });
+            }
+            const adminRef = ref(db, 'id_registry/3310');
+            const adminSnap = await get(adminRef);
+            if (!adminSnap.exists()) {
+                await set(adminRef, {
+                    name: '管理者',
+                    customTitle: '管理者',
+                    password: '3310',
+                    createdAt: Date.now(),
+                    violationCount: 0,
+                    banned: false,
+                    timeoutUntil: 0
+                });
+            }
+        }
+        initDefaultData();
+
+        onValue(ref(db, 'id_registry'), (snapshot) => {
+            if (snapshot.exists()) {
+                allRegistryUsers = snapshot.val();
+                selectedShockUsers = selectedShockUsers.filter(id => allRegistryUsers[id]);
+                selectedShakeUsers = selectedShakeUsers.filter(id => allRegistryUsers[id]);
+                updateShockUsersDisplay();
+                updateShakeUsersDisplay();
+            } else {
+                allRegistryUsers = {};
+                selectedShockUsers = [];
+                selectedShakeUsers = [];
+                updateShockUsersDisplay();
+                updateShakeUsersDisplay();
+            }
+        });
+
+        function switchAdminTab(tabName) {
+            adminSectionUsers.classList.add('hidden');
+            adminSectionCreate.classList.add('hidden');
+            adminSectionThreads.classList.add('hidden');
+            adminSectionBoards.classList.add('hidden');
+            adminSectionExtra.classList.add('hidden');
+
+            const tabs = [adminTabUsersBtn, adminTabCreateBtn, adminTabThreadsBtn, adminTabBoardsBtn, adminTabExtraBtn];
+            tabs.forEach(t => t.className = "flex-1 py-1.5 px-1 text-center bg-gray-100 border border-black border-b-0 text-black cursor-pointer font-bold truncate text-[10px] md:text-xs");
+
+            if (tabName === 'users') {
+                adminSectionUsers.classList.remove('hidden');
+                adminTabUsersBtn.className = "flex-1 py-1.5 px-1 text-center bg-white border-t border-l border-r border-black text-black cursor-pointer font-bold truncate text-[10px] md:text-xs";
+                loadAdminUsers();
+            } else if (tabName === 'create') {
+                adminSectionCreate.classList.remove('hidden');
+                adminTabCreateBtn.className = "flex-1 py-1.5 px-1 text-center bg-white border-t border-l border-r border-black text-black cursor-pointer font-bold truncate text-[10px] md:text-xs";
+            } else if (tabName === 'threads') {
+                adminSectionThreads.classList.remove('hidden');
+                adminTabThreadsBtn.className = "flex-1 py-1.5 px-1 text-center bg-white border-t border-l border-r border-black text-black cursor-pointer font-bold truncate text-[10px] md:text-xs";
+                loadAdminThreads(adminBoardSelect.value || 'zatudan');
+            } else if (tabName === 'boards') {
+                adminSectionBoards.classList.remove('hidden');
+                adminTabBoardsBtn.className = "flex-1 py-1.5 px-1 text-center bg-white border-t border-l border-r border-black text-black cursor-pointer font-bold truncate text-[10px] md:text-xs";
+                loadAdminBoards();
+            } else if (tabName === 'extra') {
+                adminSectionExtra.classList.remove('hidden');
+                adminTabExtraBtn.className = "flex-1 py-1.5 px-1 text-center bg-white border-t border-l border-r border-black text-black cursor-pointer font-bold truncate text-[10px] md:text-xs";
+            }
+        }
+
+        adminTabUsersBtn.addEventListener('click', () => switchAdminTab('users'));
+        adminTabCreateBtn.addEventListener('click', () => switchAdminTab('create'));
+        adminTabThreadsBtn.addEventListener('click', () => switchAdminTab('threads'));
+        adminTabBoardsBtn.addEventListener('click', () => switchAdminTab('boards'));
+        adminTabExtraBtn.addEventListener('click', () => switchAdminTab('extra'));
+
+        let boardDropdownInstance = null;
+        async function loadBoardSelectOptions() {
+            try {
+                const snapshot = await get(ref(db, 'board_meta'));
+                const boards = snapshot.val();
+                let boardItems = [];
+                if (boards) {
+                    Object.keys(boards).forEach(bId => {
+                        boardItems.push({ value: bId, label: boards[bId].name || bId });
+                    });
+                }
+                if (boardItems.length === 0) {
+                    boardItems = [{ value: '', label: '板がありません' }];
+                }
+
+                if (!boardDropdownInstance) {
+                    boardDropdownInstance = setupCustomDropdown(
+                        'custom-board-dropdown-toggle',
+                        'custom-board-dropdown-menu',
+                        'admin-board-select',
+                        'custom-board-dropdown-selected-label',
+                        boardItems,
+                        (selectedVal) => {
+                            if (selectedVal) loadAdminThreads(selectedVal);
+                        }
+                    );
+                    boardDropdownInstance.setValue(boardItems[0].value, boardItems[0].label);
+                    loadAdminThreads(boardItems[0].value);
+                } else {
+                    boardDropdownInstance.updateItems(boardItems);
+                    const currentVal = adminBoardSelect.value;
+                    const exists = boardItems.find(i => i.value === currentVal);
+                    if (exists) {
+                        customBoardDropdownSelectedLabel.textContent = exists.label;
+                    } else {
+                        boardDropdownInstance.setValue(boardItems[0].value, boardItems[0].label);
+                        loadAdminThreads(boardItems[0].value);
+                    }
+                }
+            } catch (e) {}
+        }
+        loadBoardSelectOptions();
+        setInterval(() => loadBoardSelectOptions(), 1000);
+
+        async function loadAdminUsers() {
+            try {
+                const snap = await get(ref(db, 'id_registry'));
+                let users = {};
+                let dbCount = 0;
+                if (snap.exists()) {
+                    users = snap.val();
+                    dbCount = Object.keys(users).length;
+                }
+                accountCountDisplay.textContent = `現在のアカウント数: ${dbCount} / 65個`;
+
+                const fragment = document.createDocumentFragment();
+                const now = Date.now();
+                let filteredCount = 0;
+
+                Object.keys(users).forEach(id => {
+                    const u = users[id];
+                    const isBanned = u.banned ? true : false;
+                    const timeoutUntil = u.timeoutUntil || 0;
+                    const isTimedOut = timeoutUntil > now;
+
+                    if (currentAccountViewMode === 'ban' && !isBanned) return;
+                    if (currentAccountViewMode === 'timeout' && !isTimedOut) return;
+                    if (currentAccountViewMode === 'normal' && (isBanned || isTimedOut)) return;
+
+                    filteredCount++;
+                    const isAdminUser = (id === '3310');
+                    const idDisp = formatDisplayId(id, u.customTitle);
+                    
+                    let statusLabel = '';
+                    if (isBanned) statusLabel += '[BAN中] ';
+                    if (isTimedOut) {
+                        const remainSec = Math.ceil((timeoutUntil - now) / 1000);
+                        const remainMin = Math.ceil(remainSec / 60);
+                        statusLabel += `[タイムアウト残:${remainMin}分] `;
+                    }
+
+                    const div = document.createElement('div');
+                    div.className = "bg-white border border-black p-2 flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs gap-2 text-black font-bold";
+
+                    div.innerHTML = `
+                        <div class="truncate w-full sm:w-auto pr-1">
+                            <span class="font-bold text-black">ID: ${escapeHtml(idDisp)}</span> / 
+                            <span>名前: <strong class="text-black">${escapeHtml(u.name || '')}</strong></span> 
+                            <span class="text-black font-bold">${statusLabel}</span>
+                        </div>
+                        <div class="flex flex-wrap gap-1 w-full sm:w-auto justify-end shrink-0">
+                            <button class="edit-idpass-btn px-2 py-0.5 border border-black bg-gray-100 text-black font-bold hover:bg-gray-200 cursor-pointer">ID/PW変</button>
+                            <button class="rename-btn px-2 py-0.5 border border-black bg-gray-100 text-black font-bold hover:bg-gray-200 cursor-pointer">名前変</button>
+                            <button class="retitle-btn px-2 py-0.5 border border-black bg-gray-100 text-black font-bold hover:bg-gray-200 cursor-pointer">肩書き変</button>
+                            ${!isAdminUser ? `
+                                <button class="timeout-btn px-2 py-0.5 border border-black font-bold bg-gray-100 text-black hover:opacity-80 cursor-pointer">${isTimedOut ? 'TO解除' : 'TO設定'}</button>
+                                <button class="ban-btn px-2 py-0.5 border border-black font-bold bg-gray-100 text-black hover:opacity-80 cursor-pointer">${isBanned ? '解除' : 'BAN'}</button>
+                                <button class="del-user-btn px-2 py-0.5 border border-black bg-gray-100 text-black font-bold hover:bg-gray-200 cursor-pointer">削除</button>
+                            ` : ''}
+                        </div>
+                    `;
+
+                    div.querySelector('.edit-idpass-btn').addEventListener('click', async () => {
+                        const newId = prompt("新しいIDを入力:", id);
+                        if (!newId || !newId.trim()) return;
+                        const trimmedNewId = newId.trim();
+                        const newPass = prompt("新しいパスワードを入力:", u.password);
+                        if (!newPass || !newPass.trim()) return;
+                        const trimmedNewPass = newPass.trim();
+
+                        if (trimmedNewId !== id) {
+                            const checkSnap = await get(ref(db, `id_registry/${trimmedNewId}`));
+                            if (checkSnap.exists()) {
+                                alert("そのIDはすでに使われています。");
+                                return;
+                            }
+                            await set(ref(db, `id_registry/${trimmedNewId}`), { ...u, password: trimmedNewPass });
+                            await remove(ref(db, `id_registry/${id}`));
+                        } else {
+                            await update(ref(db, `id_registry/${id}`), { password: trimmedNewPass });
+                        }
+                        showToast("IDとパスワードを更新しました");
+                        loadAdminUsers();
+                    });
+
+                    div.querySelector('.rename-btn').addEventListener('click', async () => {
+                        const newName = prompt(`「${u.name}」の新しい名前を入力:`, u.name);
+                        if (!newName || !newName.trim()) return;
+                        await update(ref(db, `id_registry/${id}`), { name: newName.trim() });
+                        showToast("名前を更新しました");
+                        loadAdminUsers();
+                    });
+
+                    div.querySelector('.retitle-btn').addEventListener('click', () => {
+                        openCustomTitleModal(u.customTitle || "", async (selectedTitle) => {
+                            await update(ref(db, `id_registry/${id}`), { customTitle: selectedTitle });
+                            showToast("肩書きを更新しました");
+                            loadAdminUsers();
+                        });
+                    });
+
+                    if (!isAdminUser) {
+                        div.querySelector('.timeout-btn').addEventListener('click', async () => {
+                            if (isTimedOut) {
+                                await update(ref(db, `id_registry/${id}`), { timeoutUntil: 0 });
+                                showToast("タイムアウトを解除しました");
+                                loadAdminUsers();
+                            } else {
+                                openTimeoutModal(async (targetTime) => {
+                                    await update(ref(db, `id_registry/${id}`), { timeoutUntil: targetTime });
+                                    showToast("タイムアウトを設定しました");
+                                    loadAdminUsers();
+                                });
+                            }
+                        });
+
+                        div.querySelector('.ban-btn').addEventListener('click', async () => {
+                            await update(ref(db, `id_registry/${id}`), { banned: !isBanned });
+                            showToast("BAN状態を変更しました");
+                            loadAdminUsers();
+                        });
+
+                        div.querySelector('.del-user-btn').addEventListener('click', async () => {
+                            if (confirm(`ID: ${id} を削除しますか？`)) {
+                                await remove(ref(db, `id_registry/${id}`));
+                                showToast("ユーザーを削除しました");
+                                loadAdminUsers();
+                            }
+                        });
+                    }
+                    fragment.appendChild(div);
+                });
+
+                if (filteredCount === 0) {
+                    const emptyDiv = document.createElement('div');
+                    emptyDiv.className = "text-black text-xs font-bold p-2";
+                    emptyDiv.textContent = "該当するアカウントはありません。";
+                    fragment.appendChild(emptyDiv);
+                }
+
+                adminUsersContainer.innerHTML = '';
+                adminUsersContainer.appendChild(fragment);
+            } catch (e) {}
+        }
+
+        setInterval(() => {
+            if (!adminSectionUsers.classList.contains('hidden')) {
+                loadAdminUsers();
+            }
+        }, 1000);
+
+        const customTitleModal = document.getElementById('custom-title-modal');
+        const customTitleModalList = document.getElementById('custom-title-modal-list');
+        const customTitleModalClose = document.getElementById('custom-title-modal-close');
+
+        function openCustomTitleModal(currentTitle, onSelect) {
+            customTitleModalList.innerHTML = '';
+            const noneDiv = document.createElement('div');
+            noneDiv.className = `p-1.5 cursor-pointer hover:bg-gray-200 font-bold border-b border-black text-black ${!currentTitle ? 'bg-gray-100' : ''}`;
+            noneDiv.textContent = '（なし / 削除）';
+            noneDiv.addEventListener('click', () => {
+                customTitleModal.classList.add('hidden');
+                onSelect("");
+            });
+            customTitleModalList.appendChild(noneDiv);
+
+            titleList.forEach(t => {
+                const itemDiv = document.createElement('div');
+                itemDiv.className = `p-1.5 cursor-pointer hover:bg-gray-200 truncate text-black font-bold ${t === currentTitle ? 'bg-gray-100' : ''}`;
+                itemDiv.textContent = t;
+                itemDiv.addEventListener('click', () => {
+                    customTitleModal.classList.add('hidden');
+                    onSelect(t);
+                });
+                customTitleModalList.appendChild(itemDiv);
+            });
+            customTitleModal.classList.remove('hidden');
+        }
+
+        customTitleModalClose.addEventListener('click', () => {
+            customTitleModal.classList.add('hidden');
+        });
+
+        document.getElementById('admin-do-create-btn').addEventListener('click', async () => {
+            const name = document.getElementById('admin-reg-name').value.trim();
+            const title = document.getElementById('admin-reg-title').value;
+            const id = document.getElementById('admin-reg-id').value.trim();
+            const pass = document.getElementById('admin-reg-pass').value.trim();
+
+            if (!name || !id || !pass) {
+                alert("名前・ID・パスワードは必須です。");
+                return;
+            }
+
+            try {
+                const checkSnap = await get(ref(db, `id_registry/${id}`));
+                if (checkSnap.exists()) {
+                    alert("そのIDはすでに使われています。");
+                    return;
+                }
+
+                const countSnap = await get(ref(db, 'id_registry'));
+                if (countSnap.exists() && Object.keys(countSnap.val()).length >= 65) {
+                    alert("アカウント数が上限（65個）に達しています。");
+                    return;
+                }
+
+                await set(ref(db, `id_registry/${id}`), {
+                    name: name,
+                    customTitle: title,
+                    password: pass,
+                    createdAt: Date.now(),
+                    violationCount: 0,
+                    banned: false,
+                    timeoutUntil: 0
+                });
+
+                showToast("アカウントを作成しました");
+                document.getElementById('admin-reg-name').value = '';
+                createTitleDropdown.setValue("", "（なし）");
+                document.getElementById('admin-reg-id').value = '';
+                document.getElementById('admin-reg-pass').value = '';
+                adminRegPass.type = 'password';
+                togglePassBtn.innerHTML = eyeClosedSvg;
+                loadAdminUsers();
+            } catch (e) {
+                alert("エラー: " + e.message);
+            }
+        });
+
+        async function loadAdminThreads(boardId) {
+            if (!boardId) return;
+            adminThreadsContainer.innerHTML = '<div class="text-black text-xs font-bold">読み込み中...</div>';
+            try {
+                const snap = await get(ref(db, `boards/${boardId}/threads`));
+                adminThreadsContainer.innerHTML = '';
+                if (!snap.exists()) {
+                    adminThreadsContainer.innerHTML = '<div class="text-black text-xs font-bold">スレッドはありません。</div>';
+                    return;
+                }
+
+                const threads = snap.val();
+                Object.keys(threads).forEach(tId => {
+                    const t = threads[tId];
+                    const count = t.messages ? Object.keys(t.messages).length : 0;
+                    const passText = (t.password && t.password.trim() !== "") ? `PW付` : 'PWなし';
+                    const div = document.createElement('div');
+                    div.className = "bg-white border border-black p-2 flex items-center justify-between text-xs gap-2 text-black font-bold";
+                    div.innerHTML = `
+                        <div class="truncate flex-1 pr-1">
+                            <span class="font-bold text-black">${escapeHtml(t.title || '')}</span> 
+                            <span class="text-black font-bold">[${passText}] (${count}レス)</span>
+                        </div>
+                        <button class="del-thread-btn px-2 py-0.5 border border-black bg-gray-100 text-black font-bold hover:bg-gray-200 cursor-pointer whitespace-nowrap">削除</button>
+                    `;
+                    div.querySelector('.del-thread-btn').addEventListener('click', async () => {
+                        if (confirm(`スレッド「${t.title}」を削除しますか？`)) {
+                            await remove(ref(db, `boards/${boardId}/threads/${tId}`));
+                            showToast("スレッドを削除しました");
+                            loadAdminThreads(boardId);
+                        }
+                    });
+                    adminThreadsContainer.appendChild(div);
+                });
+            } catch (e) {
+                adminThreadsContainer.innerHTML = '<div class="text-black text-xs font-bold">読み込みエラー</div>';
+            }
+        }
+
+        createBoardBtn.addEventListener('click', async () => {
+            const bId = newBoardIdInput.value.trim().toLowerCase();
+            const bName = newBoardNameInput.value.trim();
+            const bPass = newBoardPassInput.value.trim();
+            if (!bId || !bName) {
+                alert("板IDと板のタイトル名を入力してください。");
+                return;
+            }
+            if (bPass.length > 12) {
+                alert("板のパスワードは最大12文字までです。");
+                return;
+            }
+            try {
+                await set(ref(db, `board_meta/${bId}`), { name: bName, password: bPass });
+                showToast("板を追加しました！");
+                newBoardIdInput.value = '';
+                newBoardNameInput.value = '';
+                newBoardPassInput.value = '';
+                newBoardPassInput.type = 'password';
+                toggleBoardPassBtn.innerHTML = eyeClosedSvg;
+                loadBoardSelectOptions();
+                loadAdminBoards();
+            } catch (e) {
+                alert("エラー: " + e.message);
+            }
+        });
+
+        async function loadAdminBoards() {
+            adminBoardsContainer.innerHTML = '<div class="text-black text-xs font-bold">読み込み中...</div>';
+            try {
+                const snap = await get(ref(db, 'board_meta'));
+                adminBoardsContainer.innerHTML = '';
+                if (!snap.exists()) {
+                    adminBoardsContainer.innerHTML = '<div class="text-black text-xs font-bold">板がありません。</div>';
+                    return;
+                }
+                const boards = snap.val();
+                Object.keys(boards).forEach(bId => {
+                    const b = boards[bId];
+                    const bName = b.name || bId;
+                    const bPass = b.password || '';
+                    const passDisplay = bPass !== "" ? `PW: ${bPass}` : 'PWなし';
+
+                    const div = document.createElement('div');
+                    div.className = "bg-white border border-black p-2 flex items-center justify-between text-xs gap-2 text-black font-bold";
+                    div.innerHTML = `
+                        <div class="truncate flex-1 pr-1">
+                            <span class="font-bold text-black">${escapeHtml(bName)}</span> 
+                            <span class="text-black font-bold">(ID: ${escapeHtml(bId)})</span>
+                            <span class="text-black font-bold block sm:inline sm:ml-1">[${escapeHtml(passDisplay)}]</span>
+                        </div>
+                        <div class="flex gap-1 shrink-0">
+                            <button class="edit-board-pass-btn px-2 py-0.5 border border-black bg-gray-100 text-black font-bold hover:bg-gray-200 cursor-pointer whitespace-nowrap">PW変更</button>
+                            <button class="del-board-btn px-2 py-0.5 border border-black bg-gray-100 text-black font-bold hover:bg-gray-200 cursor-pointer whitespace-nowrap">削除</button>
+                        </div>
+                    `;
+
+                    div.querySelector('.edit-board-pass-btn').addEventListener('click', async () => {
+                        const newPass = prompt(`「${bName}」の新しいパスワードを入力してください\n（空欄でPW解除）`, bPass);
+                        if (newPass === null) return;
+                        if (newPass.trim().length > 12) {
+                            alert("板のパスワードは最大12文字までです。");
+                            return;
+                        }
+                        await update(ref(db, `board_meta/${bId}`), { password: newPass.trim() });
+                        showToast("板のパスワードを更新しました");
+                        loadAdminBoards();
+                    });
+
+                    div.querySelector('.del-board-btn').addEventListener('click', async () => {
+                        if (confirm(`板「${bName} (ID: ${bId})」を削除しますか？`)) {
+                            await remove(ref(db, `board_meta/${bId}`));
+                            await remove(ref(db, `boards/${bId}`));
+                            showToast("板を削除しました");
+                            loadBoardSelectOptions();
+                            loadAdminBoards();
+                        }
+                    });
+                    adminBoardsContainer.appendChild(div);
+                });
+            } catch (e) {
+                adminBoardsContainer.innerHTML = '<div class="text-black text-xs font-bold">読み込みエラー</div>';
+            }
+        }
+        loadAdminBoards();
+
+    </script>
+</body>
+</html>
